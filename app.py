@@ -46,7 +46,7 @@ def process_prompt():
     return jsonify({
             "prompt":prompt,
             "token_count":estimated_tokens,
-            "energy_used_kwh":energy_used_watt_hours
+            "energy_spent_kWh":energy_used_watt_hours
     })
 
 if __name__ == "__main__":
