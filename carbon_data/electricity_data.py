@@ -3,8 +3,11 @@ import os
 import pandas as pd
 from datetime import datetime
 import matplotlib.pyplot as plt
+from dotenv import load_dotenv
 
+load_dotenv(dotenv_path="/Users/anupamagaranisheshagiri/Documents/AAAI 2025/EcoGPT/.env")
 api_key = os.getenv("EIA_API_KEY")
+
 
 api_url = "https://api.eia.gov/v2/electricity/rto/fuel-type-data/data/"
 
