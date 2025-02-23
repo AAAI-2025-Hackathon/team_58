@@ -5,14 +5,12 @@ import time
 from openai import OpenAI
 import anthropic
 from anthropic import HUMAN_PROMPT, AI_PROMPT
+from dotenv import load_dotenv
 
-
-
-
-
+load_dotenv()
 OPEN_AI_API_KEY = os.getenv("OPEN_AI_API_KEY")
 DEEPSEEK_AI_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_KEY")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
 app = Flask(__name__)
@@ -93,6 +91,7 @@ def open_ai_call(prompt):
             }
         ]
     ) 
+    print("Open ai response",response.choices[0].message.content)
     return response.choices[0].message.content
 
 def deepseek_ai_call(prompt):
@@ -106,23 +105,22 @@ def deepseek_ai_call(prompt):
         ],
         stream=False
     )
-
+    print("deep seek",response.choices[0].message.content)
     return response.choices[0].message.content
     
 
 def anthropic_ai_call(prompt):
-    client = anthropic.Anthropic(
-        # defaults to os.environ.get("ANTHROPIC_API_KEY")
-        ANTHROPIC_API_KEY,
-    )
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     message = client.messages.create(
         model="claude-3-5-sonnet-20241022",
         max_tokens=1024,
         messages=[
-            {"role": "user", "content": "Hello, Claude"}
+            {"role": "user", "content": prompt}
         ]
     )
-    return message.content
+    print("Anthropic",message.content)
+    return message.content[0].text
+
 
 
 def xai_ai_call(prompt):
@@ -144,37 +142,79 @@ def xai_ai_call(prompt):
             },
         ],
     )
-
+    print("XAI: ",completion.choices[0].message.content)
     return completion.choices[0].message.content
 
 @app.route("/process_prompt",methods=["POST"])
 def process_prompt():
+    # data = request.json
+    # prompt = data.get("prompt", "")
+    # model = data.get("model", "gpt-4")
+
+    # estimated_tokens = count_tokens(prompt)
+
+    # if model == "deepseek-chat":
+    #     start_time = time.time()
+    #     response = deepseek_ai_call(prompt)
+    #     end_time = time.time()
+    # else:  # default OpenAI
+    #     start_time = time.time()
+    #     response = open_ai_call(prompt)
+    #     end_time = time.time()
+
+    # inference_time = end_time - start_time
+    # co2_emissions = calculate_co2_emissions(inference_time)
+
+    # return jsonify({
+    #     "prompt": prompt,
+    #     "token_count": estimated_tokens,
+    #     "model": model,
+    #     "carbon_emissions": co2_emissions,
+    #     "response": response,
+    #     "inference_time_seconds": inference_time
+    # })
+
     data = request.json
     prompt = data.get("prompt", "")
-    model = data.get("model", "gpt-4")
 
     estimated_tokens = count_tokens(prompt)
 
-    if model == "deepseek-chat":
-        start_time = time.time()
-        response = deepseek_ai_call(prompt)
-        end_time = time.time()
-    else:  # default OpenAI
-        start_time = time.time()
-        response = open_ai_call(prompt)
-        end_time = time.time()
+    models = {
+        "gpt-4o-mini": open_ai_call,
+        # "deepseek-chat": deepseek_ai_call,
+        "claude-3-5-sonnet-20241022": anthropic_ai_call,
+        "grok-2-1212": xai_ai_call,
+    }
 
-    inference_time = end_time - start_time
-    co2_emissions = calculate_co2_emissions(inference_time)
+    results = {}
+
+    for model_name, model_function in models.items():
+        try:
+            start_time = time.time()
+            response = model_function(prompt)
+            end_time = time.time()
+            inference_time = end_time - start_time
+            co2_emissions = calculate_co2_emissions(inference_time)
+
+            results[model_name] = {
+                "response": response,
+                "inference_time_seconds": inference_time,
+                "carbon_emissions": co2_emissions,
+            }
+            print(results[model_name])
+        except Exception as e:
+            results[model_name] = {
+                "response": f"Error: {str(e)}",
+                "inference_time_seconds": None,
+                "carbon_emissions": None,
+            }
 
     return jsonify({
         "prompt": prompt,
         "token_count": estimated_tokens,
-        "model": model,
-        "carbon_emissions": co2_emissions,
-        "response": response,
-        "inference_time_seconds": inference_time
+        "results": results
     })
+
 
 if __name__ == "__main__":
     app.run(debug=True)
