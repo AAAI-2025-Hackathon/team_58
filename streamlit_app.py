@@ -8,7 +8,7 @@ st.title("🔋 EcoGPT-Lite: AI Token & Energy Tracker")
 
 # User input for prompt & model selection
 prompt = st.text_area("Enter your prompt:", height=150)
-model = st.selectbox("Select Model:", ["gpt-3.5-turbo", "gpt-4"])
+model = st.selectbox("Select Model:", ["gpt-3.5-turbo", "gpt-4","deepseek-chat(Not Available)","claude-3-5-sonnet-2024102","grok-2-1212"])
 
 if st.button("Calculate Token & Energy Usage"):
     if prompt.strip():
@@ -20,12 +20,16 @@ if st.button("Calculate Token & Energy Usage"):
             data = response.json()
             tokens_used = data["token_count"]
             carbon_emissions = data["carbon_emissions"]
-            open_ai_response = data["open_ai_response"]
-
+            model_response = data["response"]
+            model_selected = data["model"]
+            inference_time_seconds = data["inference_time_seconds"]
+            
             # Display results
             st.success(f"✅ Tokens Used: {tokens_used}")
-            st.info(f"⚡ Estimated Energy Used: {carbon_emissions:.6f} kg")
-            st.info(f"OpenAI Response: {open_ai_response}")
+            st.info(f"⚡ Carbon Emissions by {model_selected}: {carbon_emissions:.6f} kg")
+            st.info(f"🕒 Inference Time: {inference_time_seconds:.4f} seconds")
+            st.info(f"{model_selected} Response: {model_response}")
+
 
             # Energy comparison chart
             energy_per_model = {
