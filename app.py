@@ -3,9 +3,17 @@ import os
 import tiktoken
 import time
 from openai import OpenAI
+import anthropic
+from anthropic import HUMAN_PROMPT, AI_PROMPT
+
+
+
 
 
 OPEN_AI_API_KEY = os.getenv("OPEN_AI_API_KEY")
+DEEPSEEK_AI_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+XAI_API_KEY = os.getenv("XAI_API_KEY")
 
 app = Flask(__name__)
 
@@ -87,33 +95,85 @@ def open_ai_call(prompt):
     ) 
     return response.choices[0].message.content
 
+def deepseek_ai_call(prompt):
+    client = OpenAI(api_key=DEEPSEEK_AI_API_KEY, base_url="https://api.deepseek.com")
+
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant"},
+            {"role": "user", "content": prompt},
+        ],
+        stream=False
+    )
+
+    return response.choices[0].message.content
+    
+
+def anthropic_ai_call(prompt):
+    client = anthropic.Anthropic(
+        # defaults to os.environ.get("ANTHROPIC_API_KEY")
+        ANTHROPIC_API_KEY,
+    )
+    message = client.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=1024,
+        messages=[
+            {"role": "user", "content": "Hello, Claude"}
+        ]
+    )
+    return message.content
+
+
+def xai_ai_call(prompt):
+    client = OpenAI(
+    api_key=XAI_API_KEY,
+    base_url="https://api.x.ai/v1",
+)
+
+    completion = client.chat.completions.create(
+        model="grok-2-1212",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are Grok, a chatbot inspired by the Hitchhikers Guide to the Galaxy."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            },
+        ],
+    )
+
+    return completion.choices[0].message.content
+
 @app.route("/process_prompt",methods=["POST"])
 def process_prompt():
     data = request.json
-    prompt = data.get("prompt","")
-    model = data.get("model","gpt-4")
-    estimated_tokens = count_tokens(prompt)    
-    # energy_used = calculate_energy(estimated_tokens,model)
-    # energy_used_watt_hours = energy_used * 1000
-    
-    
-    inference_begin_time=time.time()
-    #call open ai model for the prompt
-    open_ai_response = open_ai_call(prompt)
-    inference_end_time=time.time()
-    open_ai_inference_time = inference_end_time - inference_begin_time
-    print("Time taken",open_ai_inference_time)
-    
-    #calculate carbon emissions
-    co2_emissions = calculate_co2_emissions(inference_end_time - inference_begin_time)
-    print("carbon emission",co2_emissions)
-    
-    
+    prompt = data.get("prompt", "")
+    model = data.get("model", "gpt-4")
+
+    estimated_tokens = count_tokens(prompt)
+
+    if model == "deepseek-chat":
+        start_time = time.time()
+        response = deepseek_ai_call(prompt)
+        end_time = time.time()
+    else:  # default OpenAI
+        start_time = time.time()
+        response = open_ai_call(prompt)
+        end_time = time.time()
+
+    inference_time = end_time - start_time
+    co2_emissions = calculate_co2_emissions(inference_time)
+
     return jsonify({
-            "prompt":prompt,
-            "token_count":estimated_tokens,
-            "carbon_emissions":co2_emissions,
-            "open_ai_response":open_ai_response
+        "prompt": prompt,
+        "token_count": estimated_tokens,
+        "model": model,
+        "carbon_emissions": co2_emissions,
+        "response": response,
+        "inference_time_seconds": inference_time
     })
 
 if __name__ == "__main__":
