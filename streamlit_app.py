@@ -19,11 +19,13 @@ if st.button("Calculate Token & Energy Usage"):
         if response.status_code == 200:
             data = response.json()
             tokens_used = data["token_count"]
-            energy_spent = data["energy_spent_kWh"]
+            carbon_emissions = data["carbon_emissions"]
+            open_ai_response = data["open_ai_response"]
 
             # Display results
             st.success(f"✅ Tokens Used: {tokens_used}")
-            st.info(f"⚡ Estimated Energy Used: {energy_spent:.6f} kWh")
+            st.info(f"⚡ Estimated Energy Used: {carbon_emissions:.6f} kg")
+            st.info(f"OpenAI Response: {open_ai_response}")
 
             # Energy comparison chart
             energy_per_model = {
