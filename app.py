@@ -31,48 +31,92 @@ app = Flask(__name__)
 7. 
 """
 
-# ENERGY_USAGE_PER_MODEL = {
-#     "gpt-3.5-turbo": 0.3 / 1_000_000,  # 0.3 kWh per 1M tokens
-#     "gpt-4": 0.3 / 1_000_000,          # 0.3 kWh per 1M tokens
-# }
 
-
-# Add this after your existing model definitions
 MODEL_METADATA = {
     "gpt-4o-mini": {
         "base_cost_per_token": 0.00003,
-        "max_tokens": 4096,
-        "typical_speed": "medium",
-        "power_consumption_factor": 1.2  # relative to base GPU consumption
+        "max_tokens": 128000,
+        "typical_speed": "medium-fast",
+        "power_consumption_factor": 1.5
     },
     "claude-3-5-sonnet-20241022": {
-        "base_cost_per_token": 0.00002,
-        "max_tokens": 4096,
+        "base_cost_per_token": 0.000003,
+        "max_tokens": 200000,
         "typical_speed": "fast",
-        "power_consumption_factor": 1.0
+        "power_consumption_factor": 1.2
     },
     "grok-2-1212": {
         "base_cost_per_token": 0.00001,
-        "max_tokens": 4096,
+        "max_tokens": 32768,
         "typical_speed": "medium",
-        "power_consumption_factor": 0.9
+        "power_consumption_factor": 1.8
+    }
+}
+
+
+MODEL_METRICS = {
+    "gpt-4o-mini": {
+        "accuracy": 0.94,
+        "completion_tokens": 300,
+        "inference_time": 1.2,
+        "co2_emissions": 0.02,
+        "cost_per_1000_tokens": 0.03
+    },
+    "claude-3-5-sonnet-20241022": {
+        "accuracy": 0.93,
+        "completion_tokens": 280,
+        "inference_time": 1.0,
+        "co2_emissions": 0.018,
+        "cost_per_1000_tokens": 0.002
+    },
+    "grok-2-1212": {
+        "accuracy": 0.85,
+        "completion_tokens": 200,
+        "inference_time": 0.8,
+        "co2_emissions": 0.015,
+        "cost_per_1000_tokens": 0.001
     }
 }
 
 
 
+# Future : Use BERT or other NLP techniques for this
 QUERY_REQUIREMENTS = {
     "medical": {
         "min_accuracy": 0.90,
         "max_latency": 3.0,
         "cost_sensitivity": "low",
-        "keywords": ["diagnosis", "medical", "health", "symptoms", "disease", "treatment"]
+        "keywords": [ "diagnosis", "medical", "health", "symptoms", "disease", "treatment",
+            "prescription", "medicine", "vaccine", "surgery", "mental health", "doctor",
+            "cancer", "infection", "diabetes", "cardiology", "neurology"]
     },
     "math": {
         "min_accuracy": 0.85,
         "max_latency": 5.0,
         "cost_sensitivity": "medium",
-        "keywords": ["calculate", "solve", "equation", "math", "formula"]
+        "keywords": ["calculate", "solve", "equation", "math", "formula", 
+            "geometry", "algebra", "probability", "integral", "derivative",
+            "linear regression", "matrix", "calculus", "graph theory"]
+    },
+    "finance": {  
+        "min_accuracy": 0.88,
+        "max_latency": 6.0,
+        "cost_sensitivity": "medium",
+        "keywords": [
+            "stock", "market", "investment", "interest rate", "inflation", 
+            "portfolio", "bitcoin", "crypto", "loan", "debt", "financial",
+            "trading", "forex", "GDP", "economy", "banking", "exchange rate"
+        ]
+    },
+    "technology": { 
+        "min_accuracy": 0.80,
+        "max_latency": 7.0,
+        "cost_sensitivity": "high",
+        "keywords": [
+            "AI", "machine learning", "deep learning", "NLP", "chatbot",
+            "cloud computing", "cybersecurity", "big data", "IoT", "blockchain",
+            "quantum computing", "data science", "LLM", "GPU", "neural network"
+        ]
     },
     "general": {
         "min_accuracy": 0.75,
@@ -101,37 +145,40 @@ def analyze_query(prompt: str) -> dict:
     }
 
 
-# def select_model(query_analysis: dict) -> str:
-#     """Select appropriate model based on query requirements"""
-#     if query_analysis["type"] == "medical":
-#         return "claude-3-5-sonnet-20241022"  # Highest accuracy
-#     elif query_analysis["type"] == "math":
-#         return "gpt-4o-mini"  # Good balance
-#     else:
-#         return "grok-2-1212"  # Most cost-effective
 
 def select_model(query_analysis):
-    """Select the most efficient model based on requirements: cost, accuracy, latency, CO₂."""
-    best_model = None
-    best_score = float("inf")  # Lower is better
+   
+    query_type = query_analysis["type"]
+    pareto_models = []
 
-    for model, metadata in MODEL_METADATA.items():
-        model_score = (
-            (1 / query_analysis["min_accuracy"]) * 10  # Accuracy weight
-            + metadata["base_cost_per_token"] * 1000  # Cost weight
-            + metadata["power_consumption_factor"] * 5  # Sustainability weight
-        )
-        
-        # Find the model with the lowest score
-        if model_score < best_score:
-            best_score = model_score
-            best_model = model
+    # Step 1: Find Pareto-optimal models (not dominated)
+    for model, metrics in MODEL_METRICS.items():
+        dominated = False
+        for other_model, other_metrics in MODEL_METRICS.items():
+            if other_model != model:
+                # Check if this model is strictly worse than another
+                if (
+                    other_metrics["accuracy"] >= metrics["accuracy"]
+                    and other_metrics["cost_per_1000_tokens"] <= metrics["cost_per_1000_tokens"]
+                    and other_metrics["co2_emissions"] <= metrics["co2_emissions"]
+                ):
+                    dominated = True
+                    break  # No need to check further
 
+        if not dominated:
+            pareto_models.append((model, metrics))
+
+    # Choose the best tradeoff from Pareto-optimal models
+    if query_type in ["medical", "math"]:
+        best_model = min(pareto_models, key=lambda x: (1 - x[1]["accuracy"]))[0]  # Highest accuracy
+    if query_type == "technology":
+        best_model = "claude-3-5-sonnet-20241022" 
+    else:
+        best_model = min(pareto_models, key=lambda x: (x[1]["cost_per_1000_tokens"] + x[1]["co2_emissions"]))[0]  # Greenest + Cheapest
+
+    print(f"Selected Pareto-Optimized Model for {query_type}: {best_model}")
     return best_model
 
-
-
-# Add this class after your imports
 class QueryMetrics:
     def __init__(self):
         self.history = []
@@ -144,7 +191,6 @@ class QueryMetrics:
             **metrics
         })
         
-        # Keep only last 100 queries for memory efficiency
         if len(self.history) > 100:
             self.history.pop(0)
     
@@ -208,22 +254,14 @@ def count_tokens(prompt):
 
 
 def co2_equivalency(kg_co2: float) -> dict:
-    """Convert CO₂ savings into real-world impact."""
-    # return {
-    #     "🌳 Trees Saved": kg_co2 * 0.05,
-    #     "💡 Hours of LED Bulb Power": kg_co2 * 17,
-    #     "✈️ Airplane Miles Avoided": kg_co2 * 2,
-    #    
-    #     "🎮 Gaming PC Usage Reduced (hrs)": kg_co2 * 3,
-    # }
-    
+
     # def co2_equivalency(kg_co2: float) -> dict:
     """Convert CO₂ savings into widely accepted sustainability metrics."""
     return {
-        "🏡 Home Electricity Saved (hrs)": kg_co2 * 3.6,
+        "🏡 Home Electricity Saved (hrs)": kg_co2 / 0.25,
         "🚲 Bike Rides Instead of Car Trips": kg_co2 / 0.15,
         "🌊 Plastic Bottles Not Produced": kg_co2 / 0.08,
-        "📧 Emails Offset": kg_co2 * 100000  # Fun fact!
+        "📧 Emails Offset": kg_co2 * 50000  # Fun fact!
     }
 
 @app.route("/")
@@ -326,33 +364,7 @@ def get_metrics():
 
 @app.route("/process_prompt",methods=["POST"])
 def process_prompt():
-    # data = request.json
-    # prompt = data.get("prompt", "")
-    # model = data.get("model", "gpt-4")
-
-    # estimated_tokens = count_tokens(prompt)
-
-    # if model == "deepseek-chat":
-    #     start_time = time.time()
-    #     response = deepseek_ai_call(prompt)
-    #     end_time = time.time()
-    # else:  # default OpenAI
-    #     start_time = time.time()
-    #     response = open_ai_call(prompt)
-    #     end_time = time.time()
-
-    # inference_time = end_time - start_time
-    # co2_emissions = calculate_co2_emissions(inference_time)
-
-    # return jsonify({
-    #     "prompt": prompt,
-    #     "token_count": estimated_tokens,
-    #     "model": model,
-    #     "carbon_emissions": co2_emissions,
-    #     "response": response,
-    #     "inference_time_seconds": inference_time
-    # })
-
+  
     data = request.json
     prompt = data.get("prompt", "")
     
@@ -418,8 +430,11 @@ def process_prompt():
             "model_selection": {
                 "selected_model": selected_model,
                 "power_consumption_factor": MODEL_METADATA[selected_model]["power_consumption_factor"],
-                "base_cost_per_token": MODEL_METADATA[selected_model]["base_cost_per_token"]
-            },
+                "base_cost_per_token": MODEL_METADATA[selected_model]["base_cost_per_token"],
+                "completion_tokens": MODEL_METRICS[selected_model].get("completion_tokens", 0),
+                "inference_time": MODEL_METRICS[selected_model].get("inference_time", 0),
+                "co2_emissions": MODEL_METRICS[selected_model].get("co2_emissions", 0),
+                    },
             "performance": {
                 "response": response,
                 "inference_time_seconds": inference_time,
@@ -436,33 +451,6 @@ def process_prompt():
             "selected_model": selected_model
         }), 500
     
-
-    # for model_name, model_function in models.items():
-    #     try:
-    #         start_time = time.time()
-    #         response = model_function(prompt)
-    #         end_time = time.time()
-    #         inference_time = end_time - start_time
-    #         co2_emissions = calculate_co2_emissions(inference_time)
-
-    #         results[model_name] = {
-    #             "response": response,
-    #             "inference_time_seconds": inference_time,
-    #             "carbon_emissions": co2_emissions,
-    #         }
-    #         print(results[model_name])
-    #     except Exception as e:
-    #         results[model_name] = {
-    #             "response": f"Error: {str(e)}",
-    #             "inference_time_seconds": None,
-    #             "carbon_emissions": None,
-    #         }
-
-    # return jsonify({
-    #     "prompt": prompt,
-    #     "token_count": estimated_tokens,
-    #     "results": results
-    # })
 
 
 if __name__ == "__main__":
